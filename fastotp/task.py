@@ -7,7 +7,7 @@ WORKER_THREADS_PER_CORE = os.environ.get('WORKER_THREADS_PER_CORE', 128)
 Task = namedtuple('Task', ['priority', 'func', 'args', 'kwargs', 'log_bindings', 'blocking_perc', 'sink'])
 
 def task_wrapper(func, args=None, kwargs=None, log_bindings=None, blocking_perc=16, sink=None, priority=1):
-    args = args or {}
+    args = args or ()
     kwargs = kwargs or {}
     log_bindings = log_bindings or {}
     return Task(
