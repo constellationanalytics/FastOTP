@@ -8,7 +8,7 @@ import signal
 
 from collections import defaultdict
 from .priorityqueue import MultiPocessingPriorityQueue
-from .task import task_wrapper, Task
+from .task import task_wrapper, Task, iotask_wrapper, cputask_wrapper  
 from .service import ServiceMessage
 
 WORKER_CORES = os.environ.get('WORKER_CORES', max(multiprocessing.cpu_count() - 1, 1))
@@ -41,7 +41,7 @@ def queue_iotask(func, args=None, kwargs=None, log_bindings=None, priority=1):
     JOB_QUEUE.put(iotask_wrapper(func, args, kwargs, log_bindings, priority))
 
 def queue_cputask(func, args=None, kwargs=None, log_bindings=None, priority=1):
-    JOB_QUEUE.put(task_wrapper(func, args, kwargs, log_bindings, priority))
+    JOB_QUEUE.put(cputask_wrapper(func, args, kwargs, log_bindings, priority))
 
 def run_blocking_task(func, args=None, kwargs=None, log_bindings=None, blocking_perc=16, priority=1):
     started = arrow.utcnow()
