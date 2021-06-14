@@ -169,7 +169,10 @@ def thread_worker(task, termination_queue):
     if task.sink:
         task.sink.put(task.func(*task.args, **task.kwargs))
     else:
-        task.func(*task.args, **task.kwargs)
+        try:    
+            task.func(*task.args, **task.kwargs)
+        except:
+            pass            
     for i in range(task.blocking_perc):
         termination_queue.get()
 
