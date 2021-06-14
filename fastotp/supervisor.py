@@ -49,6 +49,8 @@ def run_blocking_task(func, args=None, kwargs=None, log_bindings=None, blocking_
     q = manager.Queue()
     JOB_QUEUE.put(task_wrapper(func, args, kwargs, log_bindings, blocking_perc, q, priority))
     result = q.get()
+    if isinstance(result, Exception):
+        raise result
     return result
 
 class GracefulExit(Exception):
@@ -167,7 +169,10 @@ def core_worker(worker_id, job_queue, termination_queue, service_lst):
 
 def thread_worker(task, termination_queue):
     if task.sink:
-        task.sink.put(task.func(*task.args, **task.kwargs))
+        try:     
+            task.sink.put(task.func(*task.args, **task.kwargs))
+        except Exception as e:
+            task.sink.put(e)                     
     else:
         try:    
             task.func(*task.args, **task.kwargs)
