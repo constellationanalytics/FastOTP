@@ -147,7 +147,7 @@ def core_worker(worker_id, job_queue, termination_queue, service_lst, extra_args
         services[service.name] = t
         service_params[service.name] = service
     log.info("Computing Extra Args")
-    extra_args = {k: f() for k, f in extra_args}
+    extra_args = {k: f() for k, f in extra_args.items()}
     log.info("Polling for Jobs")
     while True:
         try:
