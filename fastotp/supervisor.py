@@ -5,11 +5,13 @@ import structlog
 import queue
 import arrow
 import signal
+import inspect
 
 from collections import defaultdict
 from .priorityqueue import MultiPocessingPriorityQueue
 from .task import task_wrapper, Task, iotask_wrapper, cputask_wrapper  
 from .service import ServiceMessage
+from .errors.py import log_error
 
 WORKER_CORES = os.environ.get('WORKER_CORES', max(multiprocessing.cpu_count() - 1, 1))
 WORKER_THREADS_PER_CORE = os.environ.get('WORKER_THREADS_PER_CORE', 128)
@@ -59,8 +61,9 @@ class GracefulExit(Exception):
 def signal_handler(signum, frame):
     raise GracefulExit()
 
-def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=None, **kwargs):
+def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=None, extra_args=None, **kwargs):
     services = services or []
+    extra_args = extra_args or {}
     log = get_new_logger().bind(type="service", service="otpsupervisor")
     log.info("Starting up OTP Scheduler")
     worker_cores = worker_cores or WORKER_CORES
@@ -96,7 +99,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
             o.put(True)
         worker_job_queues[w] = q
         worker_capacity_queues[w] = o
-        p = multiprocessing.Process(target=core_worker, args=(w, q, o, worker_service_assignments[w]))
+        p = multiprocessing.Process(target=core_worker, args=(w, q, o, worker_service_assignments[w], extra_args))
         p.daemon = True
         p.start()
         worker_processes.append(p)
@@ -127,7 +130,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
             break
 
 
-def core_worker(worker_id, job_queue, termination_queue, service_lst):
+def core_worker(worker_id, job_queue, termination_queue, service_lst, extra_args):
     signal.signal(signal.SIGTERM, signal_handler)
     log = get_new_logger().bind(worker_id=f"cw_{worker_id}", type="worker", service="otpcoreworker")
     log.info("Setting up Services")
@@ -143,6 +146,8 @@ def core_worker(worker_id, job_queue, termination_queue, service_lst):
         service_queues[service.name] = service_job_queue
         services[service.name] = t
         service_params[service.name] = service
+    log.info("Computing Extra Args")
+    extra_args = {k: f() for k, f in extra_args}
     log.info("Polling for Jobs")
     while True:
         try:
@@ -154,7 +159,7 @@ def core_worker(worker_id, job_queue, termination_queue, service_lst):
                     t.start()
                     services[service_name] = t       
             if isinstance(job, Task):
-                t = threading.Thread(target=thread_worker, args=(job, termination_queue)) 
+                t = threading.Thread(target=thread_worker, args=(log, job, termination_queue, extra_args)) 
                 t.daemon = True
                 t.start()
             elif isinstance(job, ServiceMessage):
@@ -167,17 +172,28 @@ def core_worker(worker_id, job_queue, termination_queue, service_lst):
             break
 
 
-def thread_worker(task, termination_queue):
+def get_function_kwargs(func):
+    args, varargs, varkw, defaults = inspect.getargspec(func)
+    return args[-len(defaults):] if defaults else []
+
+def thread_worker(log, task, termination_queue, extra_args):
+    log = log.bind(task=task.func.__name__, task_type="blocking" if task.sink else "async")
+    kwargs = {"log": log}
+    for kwarg in get_function_kwargs(task.func):
+        if kwarg in extra_args:
+            kwargs[kwarg] = extra_args[kwarg] 
+    kwargs.update(task.kwargs or {})
     if task.sink:
         try:     
-            task.sink.put(task.func(*task.args, **task.kwargs))
+            task.sink.put(task.func(*task.args, **kwargs))
         except Exception as e:
+            log_error(e, log)
             task.sink.put(e)                     
     else:
         try:    
             task.func(*task.args, **task.kwargs)
-        except:
-            pass            
+        except Exception as e:
+            log_error(e, log)        
     for i in range(task.blocking_perc):
         termination_queue.get()
 
