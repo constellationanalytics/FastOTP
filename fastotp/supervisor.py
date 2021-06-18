@@ -11,7 +11,7 @@ from collections import defaultdict
 from .priorityqueue import MultiPocessingPriorityQueue
 from .task import task_wrapper, Task, iotask_wrapper, cputask_wrapper  
 from .service import ServiceMessage
-from .errors.py import log_error
+from .errors import log_error
 
 WORKER_CORES = os.environ.get('WORKER_CORES', max(multiprocessing.cpu_count() - 1, 1))
 WORKER_THREADS_PER_CORE = os.environ.get('WORKER_THREADS_PER_CORE', 128)
