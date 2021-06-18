@@ -178,7 +178,9 @@ def get_function_kwargs(func):
 
 def thread_worker(log, task, termination_queue, extra_args):
     log = log.bind(task=task.func.__name__, task_type="blocking" if task.sink else "async")
-    kwargs = {"log": log}
+    if not "log" in extra_args:
+        extra_args["log"] = log
+    kwargs = {}
     for kwarg in get_function_kwargs(task.func):
         if kwarg in extra_args:
             kwargs[kwarg] = extra_args[kwarg] 
