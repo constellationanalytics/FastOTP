@@ -5,6 +5,7 @@ import structlog
 import queue
 import arrow
 import signal
+import copy
 import inspect
 
 from collections import defaultdict
