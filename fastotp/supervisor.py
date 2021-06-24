@@ -116,9 +116,9 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
                                 worker_capacity_queues[worker_id].put(True)
                             worker_job_queues[w].put(job)
                             break
-                else:
-                    log.warning("Submitted job requested more capacity than possible to schedule")
-                    jobs.put(job)
+                log.warning("Submitted job requested more capacity than possible to schedule")
+                time.sleep(1)
+                jobs.put(job)
             elif isinstance(job, ServiceMessage):
                 worker_job_queues[service_map[job.service_name]].put(job)
             else:
@@ -176,8 +176,8 @@ def get_function_kwargs(func):
     args, varargs, varkw, defaults = inspect.getargspec(func)
     return args[-len(defaults):] if defaults else []
 
-def thread_worker(log, task, termination_queue, extra_args):
-    log = log.bind(task=task.func.__name__, task_type="blocking" if task.sink else "async")
+def thread_worker(l, task, termination_queue, extra_args):
+    log = l.bind(task=copy.deepcopy(task.func.__name__), task_type="blocking" if task.sink else "async")
     if not "log" in extra_args:
         extra_args["log"] = log
     kwargs = {}
