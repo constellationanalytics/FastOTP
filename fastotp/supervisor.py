@@ -109,16 +109,19 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
         try:
             job = jobs.get()
             if isinstance(job, Task):
+                delegated = False
                 if job.blocking_perc < min([worker_threads_per_core - wd for wd in worker_demand.values()], default=worker_threads_per_core):
                     for worker_id, worker_capacity in dict(sorted(list(worker_capacity_queues.items()), reverse=True, key=lambda x: x[1].qsize())).items():
                         if worker_threads_per_core - worker_capacity.qsize() > job.blocking_perc:
                             for i in range(job.blocking_perc): # Note there is potential here for a deadlock if multiple workers fill up the queue before it can execute, possible reason just make the Queue's infinte
                                 worker_capacity_queues[worker_id].put(True)
                             worker_job_queues[w].put(job)
+                            delegated = True
                             break
-                log.warning("Submitted job requested more capacity than possible to schedule")
-                time.sleep(1)
-                jobs.put(job)
+                if not delegated:
+                    log.warning("Submitted job requested more capacity than possible to schedule")
+                    time.sleep(1)
+                    jobs.put(job)
             elif isinstance(job, ServiceMessage):
                 worker_job_queues[service_map[job.service_name]].put(job)
             else:
