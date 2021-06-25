@@ -122,7 +122,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
                             break
                 if not delegated:
                     log.warning("Submitted job requested more capacity than possible to schedule")
-                    time.sleep(1)
+                    time.sleep(5)
                     jobs.put(job)
             elif isinstance(job, ServiceMessage):
                 worker_job_queues[service_map[job.service_name]].put(job)
