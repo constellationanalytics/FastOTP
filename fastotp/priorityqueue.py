@@ -3,7 +3,8 @@ import base64
 from time import sleep
 from datetime import datetime
 from queue import Empty
-from multiprocessing import Queue as ProcessQueue
+from faster_fifo import Queue as ProcessQueue
+#from multiprocessing import Queue as ProcessQueue
 
 class MultiPocessingPriorityQueue(object):
     '''

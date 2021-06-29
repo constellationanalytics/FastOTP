@@ -10,6 +10,7 @@ import time
 import inspect
 
 from collections import defaultdict
+from faster_fifo import Queue as FQueue
 from .priorityqueue import MultiPocessingPriorityQueue
 from .task import task_wrapper, Task, iotask_wrapper, cputask_wrapper  
 from .service import ServiceMessage
@@ -95,8 +96,9 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
     worker_capacity_queues = {}
     worker_processes = []
     for w in range(worker_cores):
-        q = multiprocessing.Queue()
-        o = multiprocessing.Queue(maxsize=worker_threads_per_core)
+        max_bytes = 1000*1000*25
+        q = FQueue(max_size_bytes=max_bytes)
+        o = multiprocessing.Queue(worker_threads_per_core)
         for i in range(worker_demand[w]):
             o.put(True)
         worker_job_queues[w] = q
@@ -117,7 +119,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
                         if worker_threads_per_core - worker_capacity.qsize() > job.blocking_perc:
                             for i in range(job.blocking_perc): # Note there is potential here for a deadlock if multiple workers fill up the queue before it can execute, possible reason just make the Queue's infinte
                                 worker_capacity_queues[worker_id].put(True)
-                            worker_job_queues[w].put(job)
+                            worker_job_queues[w].put(job, timeout=100000000)
                             delegated = True
                             break
                 if not delegated:
@@ -125,7 +127,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
                     time.sleep(5)
                     jobs.put(job)
             elif isinstance(job, ServiceMessage):
-                worker_job_queues[service_map[job.service_name]].put(job)
+                worker_job_queues[service_map[job.service_name]].put(job, timeout=100000000)
             else:
                 log.warning(f"Received unknown message of type {type(job)}: {job}")
         except (KeyboardInterrupt, SystemExit, GracefulExit):
@@ -156,7 +158,7 @@ def core_worker(worker_id, job_queue, termination_queue, service_lst, extra_args
     log.info("Polling for Jobs")
     while True:
         try:
-            job = job_queue.get()
+            job = job_queue.get(timeout=100000000)
             for service_name, service_thread in services.items():
                 if not service_thread.is_alive():
                     t = threading.Thread(target=service_worker, args=(service_params[service_name], service_queues[service_name])) 
