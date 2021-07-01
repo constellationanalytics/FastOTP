@@ -104,7 +104,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
         worker_job_queues[w] = q
         worker_capacity_queues[w] = o
         p = multiprocessing.Process(target=core_worker, args=(w, q, o, worker_service_assignments[w], extra_args))
-        p.daemon = True
+        # p.daemon = True
         p.start()
         worker_processes.append(p)
 
