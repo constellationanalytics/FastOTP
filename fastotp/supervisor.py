@@ -70,6 +70,8 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
     log = get_new_logger().bind(type="service", service="otpsupervisor")
     log.info("Starting up OTP Scheduler")
     worker_cores = worker_cores or WORKER_CORES
+    has_excess_capacity = worker_cores > 1
+    reserved_core_no = -1
     worker_threads_per_core = worker_threads_per_core or WORKER_THREADS_PER_CORE
     worker_service_assignments = defaultdict(list)
     worker_demand = defaultdict(int)
@@ -96,6 +98,8 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
     worker_capacity_queues = {}
     worker_processes = []
     for w in range(worker_cores):
+        if has_excess_capacity and reserved_core_no < 0:
+            reserved_core_no = w
         max_bytes = 1000*1000*25
         q = FQueue(max_size_bytes=max_bytes)
         o = multiprocessing.Queue(worker_threads_per_core)
@@ -116,7 +120,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
                 delegated = False
                 if job.blocking_perc < min([worker_threads_per_core - wd for wd in worker_demand.values()], default=worker_threads_per_core):
                     for worker_id, worker_capacity in dict(sorted(list(worker_capacity_queues.items()), reverse=True, key=lambda x: x[1].qsize())).items():
-                        if worker_threads_per_core - worker_capacity.qsize() > job.blocking_perc:
+                        if (worker_id != reserved_core_no or job.blocking_perc >= 90) and worker_threads_per_core - worker_capacity.qsize() > job.blocking_perc:
                             for i in range(job.blocking_perc): # Note there is potential here for a deadlock if multiple workers fill up the queue before it can execute, possible reason just make the Queue's infinte
                                 worker_capacity_queues[worker_id].put(True)
                             worker_job_queues[w].put(job, timeout=100000000)
