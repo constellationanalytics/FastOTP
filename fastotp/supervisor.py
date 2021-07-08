@@ -204,7 +204,7 @@ def thread_worker(l, task, termination_queue, extra_args):
             task.sink.put(e)                     
     else:
         try:    
-            task.func(*task.args, **task.kwargs)
+            task.func(*task.args, **kwargs)
         except Exception as e:
             log_error(e, log)        
     for i in range(task.blocking_perc):
