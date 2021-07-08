@@ -8,7 +8,10 @@ import signal
 import copy
 import time
 import inspect
+import faulthandler
+import traceback
 
+from multiprocessing import Process
 from collections import defaultdict
 from faster_fifo import Queue as FQueue
 from .priorityqueue import MultiPocessingPriorityQueue
@@ -21,6 +24,18 @@ WORKER_THREADS_PER_CORE = os.environ.get('WORKER_THREADS_PER_CORE', 128)
 SCHEDULER_QUEUE_PRIORITIES = os.environ.get('SCHEDULER_QUEUE_PRIORITIES', 10)
 
 JOB_QUEUE = queue.PriorityQueue()
+
+run_old = Process.run
+
+def run_new(*args, **kwargs):
+    try:
+        run_old(*args, **kwargs)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except:
+        traceback.print_exc(file=sys.stdout)
+
+Process.run = run_new
 
 def setup_otp_supervisor(app, **kwargs):
     app.on_event("startup")(supervisor_initiator(**kwargs))
@@ -107,7 +122,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
             o.put(True)
         worker_job_queues[w] = q
         worker_capacity_queues[w] = o
-        p = multiprocessing.Process(target=core_worker, args=(w, q, o, worker_service_assignments[w], extra_args))
+        p = Process(target=core_worker, args=(w, q, o, worker_service_assignments[w], extra_args))
         # p.daemon = True
         p.start()
         worker_processes.append(p)
@@ -142,6 +157,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
 
 
 def core_worker(worker_id, job_queue, termination_queue, service_lst, extra_args):
+    faulthandler.enable(all_threads=True)
     signal.signal(signal.SIGTERM, signal_handler)
     log = get_new_logger().bind(worker_id=f"cw_{worker_id}", type="worker", service="otpcoreworker")
     log.info("Setting up Services")
