@@ -93,9 +93,9 @@ def dump_queue(queue):
     return result
 
 def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=None, is_debug=True, extra_args=None, **kwargs):
-    prefix = "DEBUG" if is_debug else "INFO"
+    prefix = "INFO"
     logging.basicConfig(
-        format=f"%(asctime)s [{prefix}:\t] %(message)s service=otpsupervisor", stream=sys.stdout, level=logging.DEBUG if is_debug else logging.INFO
+        format=f"%(asctime)s [{prefix}:\t] %(message)s service=otpsupervisor", stream=sys.stdout, level=logging.INFO if is_debug else logging.INFO
     )
     structlog.configure(
         processors=[
