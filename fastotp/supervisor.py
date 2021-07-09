@@ -14,12 +14,14 @@ import traceback
 from multiprocessing import Process
 from collections import defaultdict
 from faster_fifo import Queue as FQueue
+from structlog.threadlocal import bind_threadlocal, clear_threadlocal
+
 from .priorityqueue import MultiPocessingPriorityQueue
 from .task import task_wrapper, Task, iotask_wrapper, cputask_wrapper  
 from .service import ServiceMessage
 from .errors import log_error
 
-WORKER_CORES = os.environ.get('WORKER_CORES', max(multiprocessing.cpu_count() - 1, 1))
+WORKER_CORES = os.environ.get('WORKER_CORES', max(2 * multiprocessing.cpu_count() - 1, 1))
 WORKER_THREADS_PER_CORE = os.environ.get('WORKER_THREADS_PER_CORE', 128)
 SCHEDULER_QUEUE_PRIORITIES = os.environ.get('SCHEDULER_QUEUE_PRIORITIES', 10)
 
@@ -79,6 +81,17 @@ class GracefulExit(Exception):
 def signal_handler(signum, frame):
     raise GracefulExit()
 
+SENTINAL = 'STOP'
+def dump_queue(queue):
+    """
+    Empties all pending items in a queue and returns them in a list.
+    """
+    result = []
+
+    for i in iter(queue.get, SENTINAL):
+        result.append(i)
+    return result
+
 def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=None, extra_args=None, **kwargs):
     services = services or []
     extra_args = extra_args or {}
@@ -120,6 +133,7 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
         o = multiprocessing.Queue(worker_threads_per_core)
         for i in range(worker_demand[w]):
             o.put(True)
+
         worker_job_queues[w] = q
         worker_capacity_queues[w] = o
         p = Process(target=core_worker, args=(w, q, o, worker_service_assignments[w], extra_args))
@@ -131,6 +145,16 @@ def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=N
     while True:
         try:
             job = jobs.get()
+            for p_id, p in enumerate(worker_processes):
+                if not p.is_alive():
+                    worker_job_queues[p_id].put(SENTINAL)
+                    for past_job in dump_queue(worker_job_queues[p_id]):
+                        jobs.put(past_job)
+                    worker_capacity_queues[p_id] = multiprocessing.Queue(worker_threads_per_core)
+                    new_p = Process(target=core_worker, args=(p_id, worker_job_queues[p_id], worker_capacity_queues[p_id], worker_service_assignments[p_id], extra_args))
+                    new_p.start()
+                    worker_processes[p_id] = new_p
+                    del p
             if isinstance(job, Task):
                 delegated = False
                 if job.blocking_perc < min([worker_threads_per_core - wd for wd in worker_demand.values()], default=worker_threads_per_core):
@@ -203,8 +227,8 @@ def get_function_kwargs(func):
     args, varargs, varkw, defaults = inspect.getargspec(func)
     return args[-len(defaults):] if defaults else []
 
-def thread_worker(l, task, termination_queue, extra_args):
-    log = l.bind(task=copy.deepcopy(task.func.__name__), task_type="blocking" if task.sink else "async")
+def thread_worker(log, task, termination_queue, extra_args):
+    bind_threadlocal(task=copy.deepcopy(task.func.__name__), task_type="blocking" if task.sink else "async")
     if not "log" in extra_args:
         extra_args["log"] = log
     kwargs = {}
