@@ -12,9 +12,9 @@ setup_otp_supervisor(app, services=[HelloWorldService()], worker_cores=1)
 
 
 
-def wasteful_computation():
+def wasteful_computation(log=None):
     time.sleep(5)
-    print(f"5^3 = {5**3}")
+    log.info(f"5^3 = {5**3}")
     return 5**3
 
 @app.get("/sync")

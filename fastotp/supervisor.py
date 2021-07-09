@@ -1,9 +1,11 @@
 import os
 import multiprocessing
 import threading
+import logging
 import structlog
 import queue
 import arrow
+import sys
 import signal
 import copy
 import time
@@ -14,7 +16,6 @@ import traceback
 from multiprocessing import Process
 from collections import defaultdict
 from faster_fifo import Queue as FQueue
-from structlog.threadlocal import bind_threadlocal, clear_threadlocal
 
 from .priorityqueue import MultiPocessingPriorityQueue
 from .task import task_wrapper, Task, iotask_wrapper, cputask_wrapper  
@@ -26,7 +27,6 @@ WORKER_THREADS_PER_CORE = os.environ.get('WORKER_THREADS_PER_CORE', 128)
 SCHEDULER_QUEUE_PRIORITIES = os.environ.get('SCHEDULER_QUEUE_PRIORITIES', 10)
 
 JOB_QUEUE = queue.PriorityQueue()
-
 run_old = Process.run
 
 def run_new(*args, **kwargs):
@@ -92,10 +92,21 @@ def dump_queue(queue):
         result.append(i)
     return result
 
-def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=None, extra_args=None, **kwargs):
+def supervisor(jobs, worker_cores=None, worker_threads_per_core=None, services=None, is_debug=True, extra_args=None, **kwargs):
+    prefix = "DEBUG" if is_debug else "INFO"
+    logging.basicConfig(
+        format=f"%(asctime)s [{prefix}:\t] %(message)s service=otpsupervisor", stream=sys.stdout, level=logging.DEBUG if is_debug else logging.INFO
+    )
+    structlog.configure(
+        processors=[
+            structlog.threadlocal.merge_threadlocal,
+            structlog.processors.KeyValueRenderer()
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+    )
     services = services or []
     extra_args = extra_args or {}
-    log = get_new_logger().bind(type="service", service="otpsupervisor")
+    log = get_new_logger().bind(type="service")
     log.info("Starting up OTP Scheduler")
     worker_cores = worker_cores or WORKER_CORES
     has_excess_capacity = worker_cores > 1
@@ -228,7 +239,9 @@ def get_function_kwargs(func):
     return args[-len(defaults):] if defaults else []
 
 def thread_worker(log, task, termination_queue, extra_args):
-    bind_threadlocal(task=copy.deepcopy(task.func.__name__), task_type="blocking" if task.sink else "async")
+    structlog.threadlocal.clear_threadlocal()
+    structlog.threadlocal.bind_threadlocal(task=copy.deepcopy(task.func.__name__), task_type="blocking" if task.sink else "async")
+    log = log.bind()
     if not "log" in extra_args:
         extra_args["log"] = log
     kwargs = {}
