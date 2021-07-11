@@ -22,7 +22,7 @@ from .task import task_wrapper, Task, iotask_wrapper, cputask_wrapper
 from .service import ServiceMessage
 from .errors import log_error
 
-WORKER_CORES = os.environ.get('WORKER_CORES', max(2 * multiprocessing.cpu_count() - 1, 1))
+WORKER_CORES = os.environ.get('WORKER_CORES', max(multiprocessing.cpu_count() - 1, 1))
 WORKER_THREADS_PER_CORE = os.environ.get('WORKER_THREADS_PER_CORE', 128)
 SCHEDULER_QUEUE_PRIORITIES = os.environ.get('SCHEDULER_QUEUE_PRIORITIES', 10)
 
